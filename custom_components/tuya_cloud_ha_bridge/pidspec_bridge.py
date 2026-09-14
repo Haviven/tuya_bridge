@@ -230,6 +230,18 @@ def _unresolved_required_dps(
     ]
 
 
+def _summarize_hard_filter_rejections(result: PidInferResult) -> str:
+    """Return a compact summary of hard-filter rejection reasons."""
+    if not result.hard_filter_rejected:
+        return ""
+    reason_counts: dict[str, int] = {}
+    for item in result.hard_filter_rejected:
+        reason = str(item.get("reason") or "unknown")
+        reason_counts[reason] = reason_counts.get(reason, 0) + 1
+    parts = [f"{reason}={count}" for reason, count in sorted(reason_counts.items())]
+    return " hard_filter_rejected=" + ",".join(parts)
+
+
 def _infer_pidspec_with_diagnosis(
     hass: HomeAssistant,
     ha_device_id: str,
@@ -274,9 +286,10 @@ def _infer_pidspec_with_diagnosis(
         if result.candidates:
             top_spec, top_score = result.candidates[0]
             top_info = f" top={top_spec.product_id} score={top_score:.1f}"
+        filter_info = _summarize_hard_filter_rejections(result)
         diagnosis = (
             f"✗ {result.status} reason={result.reason} "
-            f"signal={result.low_confidence_signal}{top_info}"
+            f"signal={result.low_confidence_signal}{top_info}{filter_info}"
         )
         return None, diagnosis, result
 

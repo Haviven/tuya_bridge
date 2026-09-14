@@ -50,37 +50,44 @@ def _is_excluded_domain(domain: str | None) -> bool:
     return domain in {"tuya", DOMAIN}
 
 
-def _is_virtual_device(device: dr.DeviceEntry) -> bool:
-    """Return if a device is virtual and should be excluded from binding."""
+def _get_excluded_device_reason(
+    hass: HomeAssistant, device: dr.DeviceEntry, target_entry_id: str
+) -> str | None:
+    """Return a human-readable exclusion reason, or None if the device is eligible."""
     if device.entry_type == "service":
-        return True
+        return "virtual_device:entry_type=service"
 
     manufacturer = (device.manufacturer or "").strip().lower()
     model = (device.model or "").strip()
     identifiers = device.identifiers
 
     if manufacturer in _VIRTUAL_MANUFACTURERS:
-        return True
+        return f"virtual_device:manufacturer={manufacturer or '<empty>'}"
 
-    if manufacturer == "mqtt":
-        return not bool(model)
+    if manufacturer == "mqtt" and not model:
+        return "virtual_device:mqtt_without_model"
 
-    return not bool(model or identifiers)
+    if not bool(model or identifiers):
+        return "virtual_device:missing_model_and_identifiers"
+
+    for config_entry_id in device.config_entries:
+        domain = _async_entry_domain(hass, config_entry_id)
+        if domain == "tuya":
+            return f"excluded_config_entry:domain=tuya entry_id={config_entry_id}"
+        if domain == DOMAIN and config_entry_id != target_entry_id:
+            return (
+                "excluded_config_entry:"
+                f"domain={DOMAIN} other_entry_id={config_entry_id}"
+            )
+
+    return None
 
 
 def _is_excluded_device(
     hass: HomeAssistant, device: dr.DeviceEntry, target_entry_id: str
 ) -> bool:
     """Return if a device should be excluded from gateway binding."""
-    if _is_virtual_device(device):
-        return True
-    for config_entry_id in device.config_entries:
-        domain = _async_entry_domain(hass, config_entry_id)
-        if domain == "tuya":
-            return True
-        if domain == DOMAIN and config_entry_id != target_entry_id:
-            return True
-    return False
+    return _get_excluded_device_reason(hass, device, target_entry_id) is not None
 
 
 async def async_sync_gateway_devices(

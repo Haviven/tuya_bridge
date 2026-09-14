@@ -1,4 +1,4 @@
-# tuya_cloud_ha_bridge
+# tuya_cloud_ha_bridge2
 
 `tuya_cloud_ha_bridge` is a Home Assistant custom integration that lets you control your Home Assistant devices directly from the Tuya app, and use the app's automation and voice integration features.
 

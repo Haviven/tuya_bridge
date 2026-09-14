@@ -2206,7 +2206,7 @@ async def async_publish_eligible_ha_devices(
     the user which HA devices are available for binding.
     """
     from .registry_sync import (
-        _is_excluded_device,
+        _get_excluded_device_reason,
         _is_excluded_domain,
         _async_entry_domain,
     )
@@ -2223,38 +2223,89 @@ async def async_publish_eligible_ha_devices(
     ha_devices: list[dict[str, str]] = []
     low_confidence_results: dict[str, Any] = {}
     matched_results: list[Any] = []
+    scanned_count = 0
+    excluded_count = 0
+    already_bound_count = 0
+    no_entity_count = 0
 
     for device in device_registry.devices.values():
-        if _is_excluded_device(hass, device, entry.entry_id):
+        scanned_count += 1
+        excluded_reason = _get_excluded_device_reason(hass, device, entry.entry_id)
+        device_name = device.name_by_user or device.name or device.id
+        entry_domains = sorted(
+            {
+                _async_entry_domain(hass, config_entry_id) or "<missing>"
+                for config_entry_id in device.config_entries
+            }
+        )
+        LOGGER.debug(
+            "publish_eligible: scan device %s (name=%s manufacturer=%s model=%s entry_domains=%s)",
+            device.id,
+            device_name,
+            device.manufacturer or "",
+            device.model or "",
+            entry_domains,
+        )
+        if excluded_reason is not None:
+            excluded_count += 1
+            LOGGER.info(
+                "publish_eligible: exclude device %s (name=%s) reason=%s",
+                device.id,
+                device_name,
+                excluded_reason,
+            )
             continue
         # Skip devices already bound to this gateway — they are not candidates
         # for (re-)binding and don't need re-inference / low-confidence report.
         if entry.entry_id in device.config_entries:
+            already_bound_count += 1
+            LOGGER.info(
+                "publish_eligible: skip device %s (name=%s) reason=already_bound_to_this_gateway",
+                device.id,
+                device_name,
+            )
             continue
 
         # Collect all entity domains for this device.
         entity_domains: set[str] = set()
         has_available_entity = False
         entity_state_summary: list[str] = []
+        disabled_entities: list[str] = []
+        excluded_entities: list[str] = []
         for entity_entry in er.async_entries_for_device(entity_registry, device.id):
             if entity_entry.disabled_by is not None:
+                disabled_entities.append(
+                    f"{entity_entry.entity_id}(disabled_by={entity_entry.disabled_by})"
+                )
                 continue
-            if _is_excluded_domain(_async_entry_domain(hass, entity_entry.config_entry_id)):
+            config_entry_domain = _async_entry_domain(hass, entity_entry.config_entry_id)
+            if _is_excluded_domain(config_entry_domain):
+                excluded_entities.append(
+                    f"{entity_entry.entity_id}(config_domain={config_entry_domain})"
+                )
                 continue
             entity_domains.add(entity_entry.domain)
-            if not has_available_entity:
-                state = hass.states.get(entity_entry.entity_id)
-                st = state.state if state is not None else "<missing>"
-                entity_state_summary.append(f"{entity_entry.entity_id}={st}")
-                if _state_is_available(state):
-                    has_available_entity = True
+            state = hass.states.get(entity_entry.entity_id)
+            st = state.state if state is not None else "<missing>"
+            entity_state_summary.append(f"{entity_entry.entity_id}={st}")
+            if not has_available_entity and _state_is_available(state):
+                has_available_entity = True
 
         if not entity_domains or not has_available_entity:
+            no_entity_count += 1
             LOGGER.info(
-                "publish_eligible: skip device %s (%s): entity_domains=%s has_available=%s\n"
-                "  entity_states: %s",
-                device.id, device.name, entity_domains, has_available_entity,
+                "publish_eligible: skip device %s (name=%s) "
+                "reason=no_eligible_entities entity_domains=%s has_available=%s\n"
+                "  entity_states: %s\n"
+                "  disabled_entities: %s\n"
+                "  excluded_entities: %s",
+                device.id,
+                device_name,
+                sorted(entity_domains),
+                has_available_entity,
                 ", ".join(entity_state_summary) if entity_state_summary else "(none)",
+                ", ".join(disabled_entities) if disabled_entities else "(none)",
+                ", ".join(excluded_entities) if excluded_entities else "(none)",
             )
             continue
 
@@ -2264,13 +2315,13 @@ async def async_publish_eligible_ha_devices(
         )
         LOGGER.info(
             "publish_eligible: pidspec %s → %s (name=%s)",
-            device.id, diagnosis, device.name,
+            device.id, diagnosis, device_name,
         )
         if discovery_result is not None:
             ha_device: dict[str, str] = {
                 "productId": discovery_result.product_id,
                 "clientId": device.id,
-                "deviceName": device.name_by_user or device.name or device.id,
+                "deviceName": device_name,
                 "deviceType": discovery_result.category_code,
             }
             # HA registry identity metadata — "name" is the integration-provided
@@ -2297,13 +2348,19 @@ async def async_publish_eligible_ha_devices(
         # inference produced none (cache empty / no profile).
         LOGGER.debug(
             "publish_eligible: device %s (%s) pidspec no match, domains=%s → low_confidence",
-            device.id, device.name, entity_domains,
+            device.id, device_name, sorted(entity_domains),
         )
         low_confidence_results[device.id] = infer_result
 
-    LOGGER.debug(
-        "publish_eligible: total_devices=%d, eligible=%d, low_confidence=%d",
-        len(device_registry.devices), len(ha_devices), len(low_confidence_results),
+    LOGGER.info(
+        "publish_eligible: scanned=%d excluded=%d already_bound=%d no_eligible_entities=%d "
+        "eligible=%d low_confidence=%d",
+        scanned_count,
+        excluded_count,
+        already_bound_count,
+        no_entity_count,
+        len(ha_devices),
+        len(low_confidence_results),
     )
     runtime_data.publish_ha_devices(ha_devices)
 
