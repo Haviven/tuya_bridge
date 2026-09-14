@@ -242,6 +242,35 @@ def _summarize_hard_filter_rejections(result: PidInferResult) -> str:
     return " hard_filter_rejected=" + ",".join(parts)
 
 
+def _summarize_profile(profile: DeviceProfile) -> str:
+    """Return a compact device-profile summary for debug logging."""
+    entity_parts: list[str] = []
+    for entity in profile.entity_profiles:
+        features = ",".join(sorted(entity.supported_features)) or "-"
+        entity_parts.append(
+            f"{entity.entity_id}<{entity.domain}>"
+            f"[features={features};component={entity.component or '-'}]"
+        )
+    return (
+        f"name={profile.name} model={profile.model} manufacturer={profile.manufacturer} "
+        f"domains={sorted(profile.domain_set)} entities={entity_parts}"
+    )
+
+
+def _summarize_top_candidates(result: PidInferResult, limit: int = 3) -> str:
+    """Return a compact summary of the top scored candidates."""
+    if not result.candidates:
+        return "(none)"
+    parts: list[str] = []
+    for spec, score in result.candidates[:limit]:
+        note = result.match_details.get(spec.product_id, {}).get("note", "")
+        part = f"{spec.product_id}:{score:.1f}"
+        if note:
+            part += f" [{note}]"
+        parts.append(part)
+    return " | ".join(parts)
+
+
 def _infer_pidspec_with_diagnosis(
     hass: HomeAssistant,
     ha_device_id: str,
@@ -286,10 +315,23 @@ def _infer_pidspec_with_diagnosis(
         if result.candidates:
             top_spec, top_score = result.candidates[0]
             top_info = f" top={top_spec.product_id} score={top_score:.1f}"
+        margin_info = ""
+        if result.margin is not None:
+            margin_info = f" margin={result.margin:.1f}"
+        threshold_info = ""
+        if result.threshold is not None:
+            threshold_info = f" threshold={result.threshold:.1f}"
         filter_info = _summarize_hard_filter_rejections(result)
         diagnosis = (
             f"✗ {result.status} reason={result.reason} "
-            f"signal={result.low_confidence_signal}{top_info}{filter_info}"
+            f"signal={result.low_confidence_signal}{top_info}"
+            f"{margin_info}{threshold_info}{filter_info}"
+        )
+        LOGGER.debug(
+            "pidspec_detail: device=%s low_confidence profile=%s top_candidates=%s",
+            ha_device_id,
+            _summarize_profile(profile),
+            _summarize_top_candidates(result),
         )
         return None, diagnosis, result
 
@@ -323,6 +365,12 @@ def _infer_pidspec_with_diagnosis(
         f"✓ matched pid={result.product_id} category={category_code} "
         f"score={top_score:.1f} entities={len(profile.entity_profiles)} "
         f"domains={list(profile.domain_set)} routes={len(routes)}"
+    )
+    LOGGER.debug(
+        "pidspec_detail: device=%s matched profile=%s top_candidates=%s",
+        ha_device_id,
+        _summarize_profile(profile),
+        _summarize_top_candidates(result),
     )
 
     return (

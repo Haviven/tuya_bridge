@@ -115,6 +115,10 @@ _BUILTIN_PIDSPECS: list[dict[str, Any]] = [
         "min_domain_coverage": 0.5,
         "disambiguate": {
             "name_keywords": [
+                "mi空气",
+                "xiaomi.airp",
+                "xiaomi.airp.ma6",
+                "airp.ma6",
                 "净化器",
                 "空气净化器",
                 "空净",
@@ -122,8 +126,9 @@ _BUILTIN_PIDSPECS: list[dict[str, Any]] = [
                 "air purifier",
                 "air cleaner",
             ],
-            "positive_attrs": ["pm25", "pm10"],
+            "positive_attrs": ["pm25", "pm10", "preset_modes", "percentage"],
             "negative_attrs": ["direction", "oscillating"],
+            "weight": 8,
         },
         "candidate_targets": {
             "switch": [
@@ -273,7 +278,234 @@ _BUILTIN_PIDSPECS: list[dict[str, Any]] = [
                 },
             },
         ],
-    }
+    },
+    {
+        # Override the BLE purifier rule so fan-centric Xiaomi purifiers do not
+        # tie with the generic switch+select variant during disambiguation.
+        "product_id": "wyjyiyywcfdhflde",
+        "category_code": "wf_ble_kj",
+        "required_domains": ["switch"],
+        "optional_domains": ["select", "sensor"],
+        "required_any_features": [
+            {"domain": "switch", "features": ["onoff"]},
+            {"domain": "sensor", "features": ["air_quality"]},
+        ],
+        "required_dps": ["switch", "mode_1"],
+        "optional_dps": [
+            "pm25",
+            "filter_life",
+            "humidity",
+            "filter_days",
+            "temp_num",
+            "temp_unit",
+            "fault_1",
+            "air_quality_1",
+        ],
+        "ignore_domains": ["number", "button", "event"],
+        "disambiguate": {
+            "name_keywords": [
+                "空气净化器",
+                "净化器",
+                "空净",
+                "purifier",
+                "air purifier",
+                "air cleaner",
+            ],
+            "positive_attrs": [],
+            "negative_attrs": ["preset_modes", "percentage"],
+            "weight": -2,
+        },
+        "candidate_targets": {
+            "switch": [
+                {
+                    "domain": "switch",
+                    "converter": "std:bool_switch",
+                    "features": ["onoff"],
+                    "converter_config": {},
+                    "priority": 100,
+                }
+            ],
+            "mode_1": [
+                {
+                    "domain": "select",
+                    "converter": "std:enum_passthrough",
+                    "features": [],
+                    "converter_config": {
+                        "range_attr": "options",
+                        "service": "select_option",
+                        "service_data_key": "option",
+                        "state_attr": "state",
+                    },
+                    "priority": 100,
+                }
+            ],
+            "pm25": [
+                {
+                    "domain": "sensor",
+                    "converter": "std:numeric_scale",
+                    "features": ["air_quality"],
+                    "converter_config": {
+                        "state_attr": "state",
+                        "scale": 1,
+                        "default": 0,
+                        "round_digits": 0,
+                    },
+                    "priority": 100,
+                }
+            ],
+            "filter_life": [
+                {
+                    "domain": "sensor",
+                    "converter": "std:numeric_scale",
+                    "features": [],
+                    "converter_config": {
+                        "state_attr": "state",
+                        "scale": 1,
+                        "default": 0,
+                        "round_digits": 0,
+                    },
+                    "priority": 100,
+                }
+            ],
+            "humidity": [
+                {
+                    "domain": "sensor",
+                    "converter": "std:numeric_scale",
+                    "features": ["humidity_sensor"],
+                    "converter_config": {
+                        "state_attr": "state",
+                        "scale": 1,
+                        "default": 0,
+                        "round_digits": 0,
+                    },
+                    "priority": 100,
+                }
+            ],
+            "filter_days": [
+                {
+                    "domain": "sensor",
+                    "converter": "std:numeric_scale",
+                    "features": [],
+                    "converter_config": {
+                        "state_attr": "state",
+                        "scale": 1,
+                        "default": 0,
+                        "round_digits": 0,
+                    },
+                    "priority": 100,
+                }
+            ],
+            "temp_num": [
+                {
+                    "domain": "sensor",
+                    "converter": "std:numeric_scale",
+                    "features": ["temperature_sensor"],
+                    "converter_config": {
+                        "state_attr": "state",
+                        "scale": 10,
+                        "round_digits": 0,
+                    },
+                    "priority": 100,
+                }
+            ],
+            "temp_unit": [
+                {
+                    "domain": "sensor",
+                    "converter": "std:enum_passthrough",
+                    "features": ["temperature_sensor"],
+                    "converter_config": {
+                        "ha_attr": "unit_of_measurement",
+                        "value_map": {"c": "°C", "f": "°F"},
+                    },
+                    "priority": 100,
+                }
+            ],
+            "fault_1": [
+                {
+                    "domain": "sensor",
+                    "converter": "std:enum_passthrough",
+                    "features": [],
+                    "converter_config": {"state_attr": "state"},
+                    "priority": 100,
+                }
+            ],
+            "air_quality_1": [
+                {
+                    "domain": "sensor",
+                    "converter": "std:enum_passthrough",
+                    "features": [],
+                    "converter_config": {"state_attr": "state"},
+                    "priority": 100,
+                }
+            ],
+        },
+        "dp_definitions": [
+            {
+                "dpcode": "switch",
+                "rw": "rw",
+                "type": "bool",
+                "match_hints": {
+                    "preferred_keywords": ["开关", "_on_"],
+                    "excluded_keywords": [
+                        "提示音",
+                        "alarm",
+                        "童锁",
+                        "物理控制",
+                        "physical_controls_locked",
+                    ],
+                },
+            },
+            {
+                "dpcode": "mode_1",
+                "rw": "rw",
+                "type": "string",
+                "match_hints": {
+                    "preferred_keywords": ["mode", "模式", "工作模式"],
+                    "excluded_keywords": ["亮度", "brightness", "显示屏", "风机", "档位", "fan_level"],
+                },
+            },
+            {"dpcode": "pm25", "rw": "ro", "type": "value"},
+            {
+                "dpcode": "filter_life",
+                "rw": "ro",
+                "type": "value",
+                "match_hints": {
+                    "preferred_keywords": ["filter_life", "剩余寿命"],
+                    "excluded_keywords": ["已使用", "used", "剩余时间", "left_time"],
+                },
+            },
+            {"dpcode": "humidity", "rw": "ro", "type": "value"},
+            {
+                "dpcode": "filter_days",
+                "rw": "ro",
+                "type": "value",
+                "match_hints": {
+                    "preferred_keywords": ["filter_left", "剩余时间"],
+                    "excluded_keywords": ["寿命", "life", "已使用", "used_time"],
+                },
+            },
+            {"dpcode": "temp_num", "rw": "ro", "type": "value"},
+            {"dpcode": "temp_unit", "rw": "ro", "type": "enum"},
+            {
+                "dpcode": "fault_1",
+                "rw": "ro",
+                "type": "string",
+                "match_hints": {
+                    "preferred_keywords": ["fault", "故障"],
+                    "excluded_keywords": ["air_quality", "空气质量"],
+                },
+            },
+            {
+                "dpcode": "air_quality_1",
+                "rw": "ro",
+                "type": "string",
+                "match_hints": {
+                    "preferred_keywords": ["air_quality", "空气质量"],
+                    "excluded_keywords": ["fault", "故障", "pm"],
+                },
+            },
+        ],
+    },
 ]
 
 
