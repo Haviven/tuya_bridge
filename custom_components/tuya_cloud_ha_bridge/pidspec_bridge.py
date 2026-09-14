@@ -156,13 +156,14 @@ async def async_init_pidspec(
         )
         domain_data[_PIDSPEC_CLOUD_CLIENT] = cloud_client
 
-    # Bootstrap from cloud when local rules are missing/empty: fetch the full
-    # bundle and persist it to disk (rules.json) so subsequent restarts load
-    # locally. Best-effort — failure leaves an empty cache, which the periodic
-    # version check can still recover later.
-    if not cache.pidspecs and cloud_client is not None:
+    # Bootstrap from cloud when only the project baseline rules are active:
+    # fetch the full bundle and persist it to disk (rules.json) so subsequent
+    # restarts load the cloud bundle plus any project-bundled overrides.
+    # Best-effort — failure leaves the built-in baseline active, which keeps
+    # targeted local fixes available even without the network.
+    if cache.is_baseline_only and cloud_client is not None:
         LOGGER.warning(
-            "pidspec_bridge: local rules empty/missing — fetching full bundle from cloud"
+            "pidspec_bridge: local rules baseline-only — fetching full bundle from cloud"
         )
         try:
             bundle = await cloud_client.async_fetch_rules_bundle()

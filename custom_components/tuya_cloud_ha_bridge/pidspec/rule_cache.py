@@ -90,6 +90,18 @@ _WIRE_TYPE_MAP: dict[str, str] = {
 }
 
 
+def _coerce_float(value: Any, default: float) -> float:
+    """Return *value* as float, tolerating simple wrapped cloud values."""
+    if value is None:
+        return default
+    if isinstance(value, dict):
+        for key in ("Value", "value"):
+            if key in value:
+                return _coerce_float(value.get(key), default)
+        return default
+    return float(value)
+
+
 def _parse_dp_definitions(
     raw_list: list[dict[str, Any]],
     candidate_targets_wire: dict[str, list[dict[str, Any]]] | None = None,
@@ -182,8 +194,8 @@ def _parse_pidspecs(raw_list: list[dict[str, Any]]) -> list[PidSpec]:
                 ),
                 disambiguate=_parse_disambiguate(item.get("disambiguate")),
                 ignore_domains=frozenset(item.get("ignore_domains", [])),
-                min_domain_coverage=float(
-                    item.get("min_domain_coverage", 0.5)
+                min_domain_coverage=_coerce_float(
+                    item.get("min_domain_coverage", 0.5), 0.5
                 ),
             )
             specs.append(spec)
@@ -257,6 +269,9 @@ class LocalRuleCache:
         Returns True on success, False on any parse / validation error.
         """
         try:
+            from ..rules.builtin_rules import merge_with_builtin_bundle
+
+            bundle = merge_with_builtin_bundle(bundle)
             rule_version, pidspecs, feature_rules, component_rules = parse_bundle(
                 bundle
             )

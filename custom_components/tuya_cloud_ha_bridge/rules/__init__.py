@@ -1,10 +1,11 @@
 """Rule bundle loader for the PidSpec inference engine.
 
-Loads rules from a local JSON file (rules.json). When the file is missing,
-``load_rules_bundle()`` returns an empty baseline bundle (rule_version=0); the
-caller (``async_init_pidspec``) detects the empty cache and bootstraps the full
-bundle from the cloud via GET /v1.0/end-user/services/ha/rules/bundle, then
-persists it back to this file.
+Loads rules from a local JSON file (rules.json). Project-bundled baseline
+rules/overrides are merged later by ``LocalRuleCache.load_from_bundle`` so
+matching can still work before any cloud bundle has been fetched. When the file
+is missing, ``load_rules_bundle()`` returns an empty disk bundle
+(``rule_version=0``); the caller can then bootstrap the full cloud bundle and
+persist it back to this file.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ def load_rules_bundle() -> dict[str, Any]:
     variant is kept for backwards compatibility with non-async code paths
     (CLI tools, tests, startup hooks that run off-loop).
 
-    When the file is absent the caller bootstraps it from the cloud, so a
+    When the file is absent the caller may bootstrap it from the cloud, so a
     missing file is an expected (recoverable) condition logged at INFO rather
     than ERROR. A present-but-corrupt file is still logged at ERROR.
     """
