@@ -51,7 +51,7 @@ from .std_bool import StdBoolSwitch
 from .std_enum import StdEnumPassthrough
 from .std_numeric import StdNumericScale
 from .std_json import StdJsonStruct
-from .std_value_to_service import StdValueToService
+from .std_value_to_service import StdValueToService, StdEnumCommand
 from .groups import (
     GROUP_CONVERTERS,
     GroupConverter,
@@ -65,6 +65,7 @@ _REGISTRY: dict[str, Converter] = {
     "std:numeric_scale": StdNumericScale(),
     "std:json_struct": StdJsonStruct(),
     "std:value_to_service": StdValueToService(),
+    "std:enum_command": StdEnumCommand(),
 }
 
 
