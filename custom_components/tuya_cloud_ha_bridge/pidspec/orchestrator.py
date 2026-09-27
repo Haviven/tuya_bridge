@@ -554,16 +554,21 @@ async def async_infer_with_refresh(
     cloud_client: CloudRuleClient | None = None,
     hass: Any | None = None,
     trigger: str = "plugin_start",
+    allow_rule_refresh: bool = True,
 ) -> InferenceResults:
     """Run inference with optional cloud rule refresh for low-confidence cases.
 
     Flow:
     1. Infer all devices against current cache
     2. If no low-confidence → done
-    3. If cloud_client available:
+    3. If cloud_client available and *allow_rule_refresh*:
        a. Check cloud rule version
        b. If newer → fetch + load bundle → re-infer low-confidence devices
     4. Remaining low-confidence devices → report to cloud
+
+    *allow_rule_refresh* is False when user-managed local rules are active — the
+    cache then stays exactly as the user configured it, but low-confidence
+    devices are still reported.
     """
     results = InferenceResults()
 
@@ -581,7 +586,7 @@ async def async_infer_with_refresh(
     )
 
     # Step 2: Try rule refresh if cloud client available
-    if cloud_client is not None:
+    if cloud_client is not None and allow_rule_refresh:
         try:
             cloud_version = await cloud_client.async_get_rule_version()
         except Exception as exc:  # noqa: BLE001

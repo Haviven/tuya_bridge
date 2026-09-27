@@ -47,9 +47,27 @@
             "unsupported_region": "The region of this API key is not supported",
             "cannot_connect_mqtt": "The gateway could not connect to Tuya MQTT service. Please check the network and try again",
             "cannot_create_gateway": "Failed to create the gateway device via Tuya Cloud. Please try again later",
-            "cannot_decode_qr": "Failed to generate QR code data"
+            "cannot_decode_qr": "Failed to generate QR code data",
+            "invalid_rules_json": "The rules JSON is invalid"
         },
         "step": {
+            "init": {
+                "menu_options": {
+                    "edit_rules": "Rules configuration",
+                    "manage_gateway": "Gateway information"
+                },
+                "title": "Virtual gateway"
+            },
+            "edit_rules": {
+                "data": {
+                    "rules_json": "Rules JSON"
+                },
+                "data_description": {
+                    "rules_json": "A JSON object containing a non-empty `pidspecs` list, e.g. {\"pidspecs\": [ ... ]}"
+                },
+                "description": "Paste the rules bundle JSON here. When set, it completely replaces the built-in and cloud rules, and cloud rule syncing is turned off.\n\nLeave empty to go back to the built-in / cloud rules.\n\n{error_detail}",
+                "title": "Rules configuration"
+            },
             "bind_gateway": {
                 "data": {
                     "qr_code": "Binding QR code"

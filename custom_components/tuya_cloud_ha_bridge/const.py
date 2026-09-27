@@ -15,6 +15,11 @@ CONF_DEVICE_SECRET = "device_secret"
 CONF_DEVICE_NAME = "device_name"
 CONF_QR_CODE_DATA = "qr_code_data"
 
+# Config entry option key holding a user-managed rules bundle as JSON text.
+# When set, it fully replaces the project baseline and cloud bundle, and cloud
+# rule syncing is disabled.
+CONF_RULES_JSON = "rules_json"
+
 # OpenAPI gateway creation path
 TUYA_OPENAPI_GATEWAY_ACTIVE_PATH = "/v1.0/end-user/devices/ha/gateway/active"
 TUYA_OPENAPI_SUB_DEVICE_LIMIT_PATH = "/v1.0/end-user/devices/ha/sub/device/limit"

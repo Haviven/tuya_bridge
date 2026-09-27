@@ -248,15 +248,30 @@ class LocalRuleCache:
     # Mutation helpers
     # ------------------------------------------------------------------
 
-    def load_from_bundle(self, bundle: dict[str, Any]) -> bool:
+    def load_from_bundle(
+        self,
+        bundle: dict[str, Any],
+        *,
+        merge_builtin: bool = True,
+        enforce_anti_downgrade: bool = True,
+    ) -> bool:
         """Parse *bundle* and atomically replace cache contents.
 
-        Anti-downgrade: silently rejects bundles whose rule_version is lower
-        than the currently cached version.
+        ``merge_builtin=False`` skips the project-bundled baseline merge so the
+        cache holds exactly what the caller supplied — used for user-managed
+        local rules, which are meant to be the single source of truth.
+
+        ``enforce_anti_downgrade=False`` accepts a bundle whose rule_version is
+        lower than the cached one; also for user-managed rules, where the
+        version number is cosmetic.
 
         Returns True on success, False on any parse / validation error.
         """
         try:
+            if merge_builtin:
+                from ..rules.builtin_rules import merge_with_builtin_bundle
+
+                bundle = merge_with_builtin_bundle(bundle)
             rule_version, pidspecs, feature_rules, component_rules = parse_bundle(
                 bundle
             )
@@ -267,7 +282,7 @@ class LocalRuleCache:
             return False
 
         # Anti-downgrade guard.
-        if rule_version < self.rule_version:
+        if enforce_anti_downgrade and rule_version < self.rule_version:
             LOGGER.warning(
                 "rule_cache: rejecting bundle version %d (current: %d) — anti-downgrade",
                 rule_version,

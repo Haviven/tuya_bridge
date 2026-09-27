@@ -20,6 +20,9 @@ from homeassistant.helpers.selector import (
     QrCodeSelector,
     QrCodeSelectorConfig,
     QrErrorCorrectionLevel,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 
 from . import (
@@ -31,11 +34,13 @@ from .const import (
     CONF_DEVICE_SECRET,
     CONF_PRODUCT_ID,
     CONF_QR_CODE_DATA,
+    CONF_RULES_JSON,
     DOMAIN,
     LOGGER,
     TUYA_CLOUD_API_KEY_GUIDE_URL,
 )
 from .region_mapping import get_region_endpoints_for_api_key, is_api_key_region_supported
+from .rules import parse_user_rules_text
 from .storage import async_load_gateway_credentials
 from .tuya_link_mqtt import TuyaLinkMqttClient
 from .tuya_openapi import TuyaOpenApiError, async_create_ha_gateway
@@ -367,10 +372,54 @@ class TuyaHaNewOptionsFlowHandler(_TemporaryGatewayClientMixin, OptionsFlowWithR
             return await self.async_step_manage_gateway()
 
         if self.config_entry.data.get(CONF_DEVICE_ID):
-            return await self.async_step_manage_gateway()
+            return self.async_show_menu(
+                step_id="init",
+                menu_options=["manage_gateway", "edit_rules"],
+            )
 
         self._gateway_details = _default_gateway_details(self.config_entry.data)
         return await self.async_step_gateway_details()
+
+    async def async_step_edit_rules(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Edit the user-managed rules JSON that replaces all other rule sources."""
+        errors: dict[str, str] = {}
+        error_detail = ""
+        current_rules = self.config_entry.options.get(CONF_RULES_JSON, "")
+
+        if user_input is not None:
+            rules_text = str(user_input.get(CONF_RULES_JSON, "")).strip()
+            if rules_text:
+                try:
+                    parse_user_rules_text(rules_text)
+                except ValueError as exc:
+                    errors["base"] = "invalid_rules_json"
+                    error_detail = str(exc)
+                    LOGGER.warning("config_flow: invalid user rules JSON: %s", exc)
+            if not errors:
+                options = dict(self.config_entry.options)
+                if rules_text:
+                    options[CONF_RULES_JSON] = rules_text
+                else:
+                    options.pop(CONF_RULES_JSON, None)
+                return self.async_create_entry(title="", data=options)
+            current_rules = rules_text
+
+        return self.async_show_form(
+            step_id="edit_rules",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_RULES_JSON, default=current_rules): TextSelector(
+                        TextSelectorConfig(
+                            type=TextSelectorType.TEXT, multiline=True
+                        )
+                    ),
+                }
+            ),
+            errors=errors,
+            description_placeholders={"error_detail": error_detail},
+        )
 
     async def async_step_gateway_details(
         self, user_input: dict[str, Any] | None = None
@@ -445,7 +494,10 @@ class TuyaHaNewOptionsFlowHandler(_TemporaryGatewayClientMixin, OptionsFlowWithR
     ) -> ConfigFlowResult:
         """Show the current virtual gateway details."""
         if user_input is not None:
-            return self.async_create_entry(title="", data={})
+            # Preserve existing options (e.g. user-managed rules) on submit.
+            return self.async_create_entry(
+                title="", data=dict(self.config_entry.options)
+            )
 
         gateway_data = {
             CONF_DEVICE_ID: self.config_entry.data.get(CONF_DEVICE_ID, ""),

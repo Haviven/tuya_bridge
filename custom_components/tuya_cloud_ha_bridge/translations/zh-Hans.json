@@ -43,6 +43,13 @@
   },
   "options": {
     "step": {
+      "init": {
+        "title": "虚拟网关",
+        "menu_options": {
+          "manage_gateway": "网关信息",
+          "edit_rules": "规则配置"
+        }
+      },
       "gateway_details": {
         "data": {
           "api_key": "API Key"
@@ -70,6 +77,16 @@
       "gateway_success": {
         "description": "操作完成，请在 App 网关面板添加子设备\n\n设备名称：`{device_name}`\n设备 ID：`{device_id}`",
         "title": "操作成功"
+      },
+      "edit_rules": {
+        "title": "规则配置",
+        "description": "在此粘贴规则包 JSON。填写后将完全替换内置规则与云端规则，并关闭云端规则同步。\n\n留空则恢复使用内置 / 云端规则。\n\n{error_detail}",
+        "data": {
+          "rules_json": "规则 JSON"
+        },
+        "data_description": {
+          "rules_json": "一个包含非空 `pidspecs` 列表的 JSON 对象，例如 {\"pidspecs\": [ ... ]}"
+        }
       }
     },
     "error": {
@@ -77,7 +94,8 @@
       "unsupported_region": "该 API Key 所属区域暂不支持",
       "cannot_create_gateway": "通过涂鸦云创建网关设备失败，请稍后重试",
       "cannot_connect_mqtt": "网关无法连接涂鸦 MQTT 服务，请检查网络后重试",
-      "cannot_decode_qr": "二维码数据生成失败"
+      "cannot_decode_qr": "二维码数据生成失败",
+      "invalid_rules_json": "规则 JSON 无效"
     }
   },
   "services": {

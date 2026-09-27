@@ -43,6 +43,13 @@
   },
   "options": {
     "step": {
+      "init": {
+        "title": "Virtual gateway",
+        "menu_options": {
+          "manage_gateway": "Gateway information",
+          "edit_rules": "Rules configuration"
+        }
+      },
       "gateway_details": {
         "data": {
           "api_key": "API key"
@@ -70,6 +77,16 @@
       "gateway_success": {
         "description": "Please add sub-devices on the gateway panel in the app\n\nDevice name: `{device_name}`\nDevice ID: `{device_id}`",
         "title": "Operation successful"
+      },
+      "edit_rules": {
+        "title": "Rules configuration",
+        "description": "Paste the rules bundle JSON here. When set, it completely replaces the built-in and cloud rules, and cloud rule syncing is turned off.\n\nLeave empty to go back to the built-in / cloud rules.\n\n{error_detail}",
+        "data": {
+          "rules_json": "Rules JSON"
+        },
+        "data_description": {
+          "rules_json": "A JSON object containing a non-empty `pidspecs` list, e.g. {\"pidspecs\": [ ... ]}"
+        }
       }
     },
     "error": {
@@ -77,7 +94,8 @@
       "unsupported_region": "The region of this API key is not supported",
       "cannot_create_gateway": "Failed to create the gateway device via Tuya Cloud. Please try again later",
       "cannot_connect_mqtt": "The gateway could not connect to Tuya MQTT service. Please check the network and try again",
-      "cannot_decode_qr": "Failed to generate QR code data"
+      "cannot_decode_qr": "Failed to generate QR code data",
+      "invalid_rules_json": "The rules JSON is invalid"
     }
   },
   "services": {

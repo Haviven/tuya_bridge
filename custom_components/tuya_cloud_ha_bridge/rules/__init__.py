@@ -59,6 +59,30 @@ def load_rules_bundle() -> dict[str, Any]:
         return _empty_bundle()
 
 
+def parse_user_rules_text(text: str) -> dict[str, Any]:
+    """Parse user-supplied rules JSON text into a bundle dict.
+
+    The text must be a JSON object carrying a non-empty ``pidspecs`` list. A
+    missing ``rule_version`` is normalized to 1 so hand-written bundles do not
+    have to track a version number.
+
+    Raises ValueError with a user-facing message when the text is unusable.
+    """
+    try:
+        bundle = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid JSON: {exc}") from exc
+
+    if not isinstance(bundle, dict):
+        raise ValueError("rules JSON must be an object")
+
+    if not isinstance(bundle.get("pidspecs"), list) or not bundle["pidspecs"]:
+        raise ValueError("rules JSON must contain a non-empty 'pidspecs' list")
+
+    bundle.setdefault("rule_version", 1)
+    return bundle
+
+
 def _empty_bundle() -> dict[str, Any]:
     """Return a baseline empty bundle (rule_version=0, no pidspecs)."""
     return {

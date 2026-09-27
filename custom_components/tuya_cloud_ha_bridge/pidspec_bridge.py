@@ -40,6 +40,7 @@ from .pidspec.rule_cache import LocalRuleCache
 _PIDSPEC_RULE_CACHE = "pidspec_rule_cache"
 _PIDSPEC_ROUTE_TABLES = "pidspec_route_tables"
 _PIDSPEC_CLOUD_CLIENT = "pidspec_cloud_client"
+_PIDSPEC_LOCAL_ONLY = "pidspec_local_only"
 
 
 def _get_domain_data(hass: HomeAssistant) -> dict[str, Any]:
@@ -49,6 +50,11 @@ def _get_domain_data(hass: HomeAssistant) -> dict[str, Any]:
 def get_rule_cache(hass: HomeAssistant) -> LocalRuleCache | None:
     """Return the shared rule cache, or None if not initialized."""
     return _get_domain_data(hass).get(_PIDSPEC_RULE_CACHE)
+
+
+def is_local_rules_only(hass: HomeAssistant) -> bool:
+    """Return True when user-managed local rules replaced cloud rule syncing."""
+    return bool(_get_domain_data(hass).get(_PIDSPEC_LOCAL_ONLY))
 
 
 def get_route_table(
@@ -111,12 +117,17 @@ async def async_init_pidspec(
     hass: HomeAssistant,
     api_key: str | None = None,
     gateway_id: str | None = None,
+    rules_json: str | None = None,
 ) -> LocalRuleCache:
     """Initialize the pidspec engine: load rules, optionally set up cloud client.
 
     Call this in async_setup_entry after credentials are validated. *gateway_id*
     is the HA gateway's device id, threaded into the cloud client so the
     low-confidence report (interface 8) can carry it.
+
+    When *rules_json* carries user-supplied rules text, those rules become the
+    single source of truth: they fully replace the project baseline and the
+    cloud bundle, and cloud rule syncing is disabled for the whole runtime.
     Returns the loaded rule cache.
     """
     domain_data = _get_domain_data(hass)
@@ -127,6 +138,36 @@ async def async_init_pidspec(
     cache = await LocalRuleCache.load_from_local_file_async(hass)
     domain_data[_PIDSPEC_RULE_CACHE] = cache
     domain_data.setdefault(_PIDSPEC_ROUTE_TABLES, {})
+
+    # User-managed rules (integration options text box): replace everything and
+    # turn off cloud rule syncing entirely. Reset first — hass.data[DOMAIN]
+    # survives config-entry reloads, so a stale flag would otherwise stick after
+    # the user clears the text box.
+    domain_data[_PIDSPEC_LOCAL_ONLY] = False
+    if rules_json and rules_json.strip():
+        from .rules import parse_user_rules_text
+
+        try:
+            user_bundle = parse_user_rules_text(rules_json)
+        except ValueError as exc:
+            LOGGER.error("pidspec_bridge: invalid user rules JSON: %s", exc)
+        else:
+            if cache.load_from_bundle(
+                user_bundle,
+                merge_builtin=False,
+                enforce_anti_downgrade=False,
+            ):
+                domain_data[_PIDSPEC_LOCAL_ONLY] = True
+                LOGGER.info(
+                    "pidspec_bridge: using user-managed rules (%d pidspecs); "
+                    "cloud rule syncing disabled",
+                    len(cache.pidspecs),
+                )
+            else:
+                LOGGER.error(
+                    "pidspec_bridge: user rules JSON failed to load; "
+                    "falling back to project/cloud rules"
+                )
 
     # Set up cloud client if api_key available
     cloud_client = None
@@ -159,8 +200,13 @@ async def async_init_pidspec(
     # Bootstrap from cloud when local rules are missing/empty: fetch the full
     # bundle and persist it to disk (rules.json) so subsequent restarts load
     # locally. Best-effort — failure leaves an empty cache, which the periodic
-    # version check can still recover later.
-    if not cache.pidspecs and cloud_client is not None:
+    # version check can still recover later. Skipped entirely in user-managed
+    # rules mode, where the user's text box is the only source of truth.
+    if (
+        not is_local_rules_only(hass)
+        and not cache.pidspecs
+        and cloud_client is not None
+    ):
         LOGGER.warning(
             "pidspec_bridge: local rules empty/missing — fetching full bundle from cloud"
         )
@@ -229,6 +275,47 @@ def _unresolved_required_dps(
     ]
 
 
+def _summarize_hard_filter_rejections(result: PidInferResult) -> str:
+    """Return a compact summary of hard-filter rejection reasons."""
+    if not result.hard_filter_rejected:
+        return ""
+    reason_counts: dict[str, int] = {}
+    for item in result.hard_filter_rejected:
+        reason = str(item.get("reason") or "unknown")
+        reason_counts[reason] = reason_counts.get(reason, 0) + 1
+    parts = [f"{reason}={count}" for reason, count in sorted(reason_counts.items())]
+    return " hard_filter_rejected=" + ",".join(parts)
+
+
+def _summarize_profile(profile: DeviceProfile) -> str:
+    """Return a compact device-profile summary for debug logging."""
+    entity_parts: list[str] = []
+    for entity in profile.entity_profiles:
+        features = ",".join(sorted(entity.supported_features)) or "-"
+        entity_parts.append(
+            f"{entity.entity_id}<{entity.domain}>"
+            f"[features={features};component={entity.component or '-'}]"
+        )
+    return (
+        f"name={profile.name} model={profile.model} manufacturer={profile.manufacturer} "
+        f"domains={sorted(profile.domain_set)} entities={entity_parts}"
+    )
+
+
+def _summarize_top_candidates(result: PidInferResult, limit: int = 3) -> str:
+    """Return a compact summary of the top scored candidates."""
+    if not result.candidates:
+        return "(none)"
+    parts: list[str] = []
+    for spec, score in result.candidates[:limit]:
+        note = result.match_details.get(spec.product_id, {}).get("note", "")
+        part = f"{spec.product_id}:{score:.1f}"
+        if note:
+            part += f" [{note}]"
+        parts.append(part)
+    return " | ".join(parts)
+
+
 def _infer_pidspec_with_diagnosis(
     hass: HomeAssistant,
     ha_device_id: str,
@@ -273,9 +360,23 @@ def _infer_pidspec_with_diagnosis(
         if result.candidates:
             top_spec, top_score = result.candidates[0]
             top_info = f" top={top_spec.product_id} score={top_score:.1f}"
+        margin_info = ""
+        if result.margin is not None:
+            margin_info = f" margin={result.margin:.1f}"
+        threshold_info = ""
+        if result.threshold is not None:
+            threshold_info = f" threshold={result.threshold:.1f}"
+        filter_info = _summarize_hard_filter_rejections(result)
         diagnosis = (
             f"✗ {result.status} reason={result.reason} "
             f"signal={result.low_confidence_signal}{top_info}"
+            f"{margin_info}{threshold_info}{filter_info}"
+        )
+        LOGGER.debug(
+            "pidspec_detail: device=%s low_confidence profile=%s top_candidates=%s",
+            ha_device_id,
+            _summarize_profile(profile),
+            _summarize_top_candidates(result),
         )
         return None, diagnosis, result
 
@@ -309,6 +410,12 @@ def _infer_pidspec_with_diagnosis(
         f"✓ matched pid={result.product_id} category={category_code} "
         f"score={top_score:.1f} entities={len(profile.entity_profiles)} "
         f"domains={list(profile.domain_set)} routes={len(routes)}"
+    )
+    LOGGER.debug(
+        "pidspec_detail: device=%s matched profile=%s top_candidates=%s",
+        ha_device_id,
+        _summarize_profile(profile),
+        _summarize_top_candidates(result),
     )
 
     return (
@@ -462,9 +569,14 @@ async def async_infer_and_build_routes(
 
     cloud_client = domain_data.get(_PIDSPEC_CLOUD_CLIENT)
 
-    # Run inference with optional refresh
+    # Run inference with optional refresh. In user-managed rules mode the cloud
+    # refresh is disabled — the text box is the single source of truth.
     results = await async_infer_with_refresh(
-        cache, device_profiles, cloud_client, hass=hass
+        cache,
+        device_profiles,
+        cloud_client,
+        hass=hass,
+        allow_rule_refresh=not is_local_rules_only(hass),
     )
 
     # Build route tables for matched devices; demote incomplete ones
