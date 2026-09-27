@@ -62,9 +62,10 @@ def load_rules_bundle() -> dict[str, Any]:
 def parse_user_rules_text(text: str) -> dict[str, Any]:
     """Parse user-supplied rules JSON text into a bundle dict.
 
-    The text must be a JSON object carrying a non-empty ``pidspecs`` list. A
-    missing ``rule_version`` is normalized to 1 so hand-written bundles do not
-    have to track a version number.
+    The text must be a JSON object carrying a non-empty ``pidspecs`` list. The
+    raw cloud API response (which wraps the bundle in ``result``) is accepted
+    too, so the response body can be pasted verbatim. A missing ``rule_version``
+    is normalized to 1 so hand-written bundles do not have to track a version.
 
     Raises ValueError with a user-facing message when the text is unusable.
     """
@@ -75,6 +76,9 @@ def parse_user_rules_text(text: str) -> dict[str, Any]:
 
     if not isinstance(bundle, dict):
         raise ValueError("rules JSON must be an object")
+
+    if not bundle.get("pidspecs") and isinstance(bundle.get("result"), dict):
+        bundle = bundle["result"]
 
     if not isinstance(bundle.get("pidspecs"), list) or not bundle["pidspecs"]:
         raise ValueError("rules JSON must contain a non-empty 'pidspecs' list")
