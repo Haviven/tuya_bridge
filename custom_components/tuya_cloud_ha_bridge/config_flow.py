@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from types import MappingProxyType
 from typing import Any
 
@@ -15,11 +16,15 @@ from homeassistant.config_entries import (
     OptionsFlowWithReload,
 )
 from homeassistant.const import CONF_API_KEY
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
     QrCodeSelector,
     QrCodeSelectorConfig,
     QrErrorCorrectionLevel,
+    SelectSelector,
+    SelectSelectorConfig,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -115,6 +120,42 @@ def _validate_gateway_details(
         errors["base"] = "unsupported_region"
 
     return gateway_details, errors
+
+
+# Options-flow menu entries, shared by async_step_init and the "back" path of
+# sub-steps so the menu stays in sync.
+OPTIONS_MENU_OPTIONS: tuple[str, ...] = (
+    "manage_gateway",
+    "edit_rules",
+    "device_definitions",
+    "device_definition_notes",
+)
+
+# Form field keys for the device-definitions viewer. Kept out of const.py
+# because they are never persisted to the config entry.
+_CONF_TARGET_DEVICE_ID = "target_device_id"
+_CONF_DEVICE_DEFINITION = "device_definition"
+
+
+def _device_definition_options(hass: HomeAssistant) -> list[dict[str, str]]:
+    """Return select options for every device that exposes at least one entity."""
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+
+    options: list[dict[str, str]] = []
+    for device in device_registry.devices.values():
+        name = device.name_by_user or device.name
+        if not name:
+            continue
+        if not er.async_entries_for_device(
+            entity_registry, device.id, include_disabled_entities=True
+        ):
+            continue
+        label = f"{name} · {device.model}" if device.model else name
+        options.append({"value": device.id, "label": label})
+
+    options.sort(key=lambda option: option["label"].casefold())
+    return options
 
 
 class _TemporaryGatewayClientMixin:
@@ -356,6 +397,13 @@ class TuyaHaNewOptionsFlowHandler(_TemporaryGatewayClientMixin, OptionsFlowWithR
         self._gateway_data: dict[str, str] | None = None
         self._temporary_client = None
         self._temporary_client_handed_off = False
+        self._definition_device_id: str | None = None
+
+    def _show_options_menu(self) -> ConfigFlowResult:
+        """Return to the options menu."""
+        return self.async_show_menu(
+            step_id="init", menu_options=list(OPTIONS_MENU_OPTIONS)
+        )
 
     async def async_step_init(
         self, _user_input: dict[str, Any] | None = None
@@ -372,13 +420,99 @@ class TuyaHaNewOptionsFlowHandler(_TemporaryGatewayClientMixin, OptionsFlowWithR
             return await self.async_step_manage_gateway()
 
         if self.config_entry.data.get(CONF_DEVICE_ID):
-            return self.async_show_menu(
-                step_id="init",
-                menu_options=["manage_gateway", "edit_rules"],
-            )
+            return self._show_options_menu()
 
         self._gateway_details = _default_gateway_details(self.config_entry.data)
         return await self.async_step_gateway_details()
+
+    async def async_step_device_definitions(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick a device whose HA entity definitions should be dumped."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            device_id = str(user_input.get(_CONF_TARGET_DEVICE_ID, "")).strip()
+            if device_id:
+                self._definition_device_id = device_id
+                return await self.async_step_device_definition_view()
+            errors["base"] = "device_required"
+
+        options = _device_definition_options(self.hass)
+        if not options:
+            return self.async_abort(reason="no_devices")
+
+        return self.async_show_form(
+            step_id="device_definitions",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(_CONF_TARGET_DEVICE_ID): SelectSelector(
+                        SelectSelectorConfig(options=options)
+                    ),
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_device_definition_view(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show the selected device's entity definitions for copying."""
+        if user_input is not None:
+            # Nothing to persist — the field only exists so the user can copy
+            # the JSON; submitting returns to the device picker so another
+            # device can be inspected without leaving the flow.
+            return await self.async_step_device_definitions()
+
+        if self._definition_device_id is None:
+            return await self.async_step_device_definitions()
+
+        # Imported lazily to keep config_flow's import graph light.
+        from .device_profiling import build_device_definition_dump
+        from .pidspec_bridge import get_rule_cache
+
+        dump = build_device_definition_dump(
+            self.hass, self._definition_device_id, get_rule_cache(self.hass)
+        )
+        if dump is None:
+            return self.async_abort(reason="device_not_found")
+
+        definition_json = json.dumps(dump, ensure_ascii=False, indent=2)
+        return self.async_show_form(
+            step_id="device_definition_view",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        _CONF_DEVICE_DEFINITION, default=definition_json
+                    ): TextSelector(
+                        TextSelectorConfig(
+                            type=TextSelectorType.TEXT, multiline=True
+                        )
+                    ),
+                }
+            ),
+            description_placeholders={
+                "device_name": str(dump.get("name", "")),
+                "entity_count": str(dump.get("entity_count", 0)),
+            },
+        )
+
+    async def async_step_device_definition_notes(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show the field legend explaining every key of the definition list."""
+        if user_input is not None:
+            return self._show_options_menu()
+
+        from .device_profiling import device_definition_field_notes_text
+
+        return self.async_show_form(
+            step_id="device_definition_notes",
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "field_notes": device_definition_field_notes_text()
+            },
+        )
 
     async def async_step_edit_rules(
         self, user_input: dict[str, Any] | None = None

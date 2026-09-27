@@ -47,7 +47,9 @@
         "title": "虚拟网关",
         "menu_options": {
           "manage_gateway": "网关信息",
-          "edit_rules": "规则配置"
+          "edit_rules": "规则配置",
+          "device_definitions": "设备清单查询",
+          "device_definition_notes": "设备清单说明"
         }
       },
       "gateway_details": {
@@ -87,7 +89,29 @@
         "data_description": {
           "rules_json": "一个包含非空 `pidspecs` 列表的 JSON 对象，例如 {\"pidspecs\": [ ... ]}"
         }
+      },
+      "device_definitions": {
+        "title": "设备清单查询",
+        "description": "选择一个设备，查看它在 HA 中暴露的全部实体，以及规则引擎实际用于匹配的字段（domain、语义 features、component、当前状态与属性）。",
+        "data": {
+          "target_device_id": "设备"
+        }
+      },
+      "device_definition_view": {
+        "title": "设备清单查询",
+        "description": "`{device_name}` 的实体定义（共 {entity_count} 个实体）。复制下方 JSON 发给规则作者即可。\n\n清单末尾的 `field_notes` 已内嵌字段含义；完整对照表可在上级菜单的「设备清单说明」中查看。\n\n点击「提交」返回设备选择页。",
+        "data": {
+          "device_definition": "实体定义（JSON）"
+        }
+      },
+      "device_definition_notes": {
+        "title": "设备清单说明",
+        "description": "{field_notes}\n\n点击「提交」返回上一级菜单。"
       }
+    },
+    "abort": {
+      "no_devices": "未找到包含实体的设备",
+      "device_not_found": "所选设备已不存在或未暴露任何实体"
     },
     "error": {
       "api_key_required": "请输入 API Key",
@@ -95,7 +119,8 @@
       "cannot_create_gateway": "通过涂鸦云创建网关设备失败，请稍后重试",
       "cannot_connect_mqtt": "网关无法连接涂鸦 MQTT 服务，请检查网络后重试",
       "cannot_decode_qr": "二维码数据生成失败",
-      "invalid_rules_json": "规则 JSON 无效"
+      "invalid_rules_json": "规则 JSON 无效",
+      "device_required": "请选择一个设备"
     }
   },
   "services": {

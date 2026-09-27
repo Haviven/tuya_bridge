@@ -42,19 +42,26 @@
         }
     },
     "options": {
+        "abort": {
+            "no_devices": "No devices with entities were found",
+            "device_not_found": "The selected device no longer exists or exposes no entities"
+        },
         "error": {
             "api_key_required": "Please enter an API key",
             "unsupported_region": "The region of this API key is not supported",
             "cannot_connect_mqtt": "The gateway could not connect to Tuya MQTT service. Please check the network and try again",
             "cannot_create_gateway": "Failed to create the gateway device via Tuya Cloud. Please try again later",
             "cannot_decode_qr": "Failed to generate QR code data",
-            "invalid_rules_json": "The rules JSON is invalid"
+            "invalid_rules_json": "The rules JSON is invalid",
+            "device_required": "Please select a device"
         },
         "step": {
             "init": {
                 "menu_options": {
                     "edit_rules": "Rules configuration",
-                    "manage_gateway": "Gateway information"
+                    "manage_gateway": "Gateway information",
+                    "device_definitions": "Device list query",
+                    "device_definition_notes": "Device list reference"
                 },
                 "title": "Virtual gateway"
             },
@@ -67,6 +74,24 @@
                 },
                 "description": "Paste the rules bundle JSON here. When set, it completely replaces the built-in and cloud rules, and cloud rule syncing is turned off.\n\nLeave empty to go back to the built-in / cloud rules.\n\n{error_detail}",
                 "title": "Rules configuration"
+            },
+            "device_definitions": {
+                "data": {
+                    "target_device_id": "Device"
+                },
+                "description": "Select a device to view every Home Assistant entity it exposes, together with the fields the rule engine matches on (domain, semantic features, component, current state and attributes).",
+                "title": "Device list query"
+            },
+            "device_definition_view": {
+                "data": {
+                    "device_definition": "Entity definitions (JSON)"
+                },
+                "description": "Entity definitions of `{device_name}` ({entity_count} entities). Copy the JSON below and send it to the rule author.\n\nThe `field_notes` block at the end of the list documents every field; the full table is available from the \"Device list reference\" entry on the previous menu.\n\nSubmitting returns to the device picker.",
+                "title": "Device list query"
+            },
+            "device_definition_notes": {
+                "description": "{field_notes}\n\nSubmitting returns to the previous menu.",
+                "title": "Device list reference"
             },
             "bind_gateway": {
                 "data": {
